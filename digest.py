@@ -75,7 +75,6 @@ FEEDS = {
     "ICDS":           "https://icds.ee/en/feed/",
     "Äripäev":        "https://www.aripaev.ee/rss",
     "Õhtuleht":       "https://www.ohtuleht.ee/rss",
-    "Geenius":        "https://geenius.ee/feed/",
     "Estonian World": "https://estonianworld.com/feed/",
     "The Baltic Times": "https://www.baltictimes.com/rss/",}
 

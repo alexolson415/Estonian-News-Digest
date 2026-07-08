@@ -18,9 +18,9 @@ Scope of "relevant":
     relevant to the transatlantic alliance
 
 Run modes:
-    python digest.py --check-setup   validate credentials and feeds, no email sent
-    python digest.py --test          fetch feeds and print candidates, no API/email
-    python digest.py --dry-run       full pipeline, writes digest_preview.html instead of emailing
+    python digestV2.py --check-setup   validate credentials and feeds, no email sent
+    python digestV2.py --test          fetch feeds and print candidates, no API/email
+    python digestV2.py --dry-run       full pipeline, writes digest_preview.html instead of emailing
     python digest.py                 full pipeline, sends the email
 
 Setup:
@@ -225,7 +225,7 @@ When genuinely uncertain, err toward INCLUDING the article and flag it as uncert
 For EACH article produce a JSON object with:
   "relevant": true or false
   "en_summary": (only if relevant=true) one concise sentence in English, your own words
-  "en_detail":  (only if relevant=true) a paragraph expanding on the summary — key actors,
+  "en_detail":  (only if relevant=true) 2 paragraphs expanding on the summary — key actors,
                 what was decided or happened, and why it matters for US-Estonia defense relations
   "tag":        (only if relevant=true) 3-6 word phrase naming the specific angle,
 Respond with ONLY a JSON array of {len(batch)} objects in order. No preamble, no markdown fences.
