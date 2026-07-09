@@ -225,9 +225,11 @@ When genuinely uncertain, err toward INCLUDING the article and flag it as uncert
 For EACH article produce a JSON object with:
   "relevant": true or false
   "en_summary": (only if relevant=true) one concise sentence in English, your own words
-  "en_detail":  (only if relevant=true) 2 paragraphs expanding on the summary — key actors,
+  "en_detail":  (only if relevant=true)  2 paragraphs in English expanding on the summary — key actors,
                 what was decided or happened, and why it matters for US-Estonia defense relations
-  "tag":        (only if relevant=true) 3-6 word phrase naming the specific angle,
+   "tag":        (only if relevant=true) 3-6 word phrase naming the specific angle,
+                e.g. "US troop rotation Tapa", "Baltic cable sabotage", "NATO air policing",
+                "US-Estonia arms agreement", "Russian hybrid threat"
 Respond with ONLY a JSON array of {len(batch)} objects in order. No preamble, no markdown fences.
 
 Articles:
@@ -283,6 +285,7 @@ def gemini_filter_and_summarize(entries, api_key):
             for entry, result in zip(batch, parsed_response):
                 if result.get("relevant"):
                     entry["en_summary"] = result.get("en_summary", "")
+                    entry["en_detail"]  = result.get("en_detail", "")
                     entry["tag"]        = result.get("tag", "")
                     relevant.append(entry)
 
@@ -340,8 +343,8 @@ def build_html(entries, digest_date):
                  padding: 2px 7px; border-radius: 3px; font-size: 11px;">
       {e.get('tag', '')}
     </span>
-  </div>
-  <div>{e.get('en_summary', '')}</div>
+  <div style="font-weight: 500; margin-bottom: 6px;">{e.get('en_summary', '')}</div>
+  <div style="color: #333; line-height: 1.6;">{e.get('en_detail', '')}</div>
   </div>""")
 
     lines.append("</body></html>")
