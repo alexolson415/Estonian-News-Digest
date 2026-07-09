@@ -1,0 +1,33 @@
+name: Estonia Defense Digest
+
+on:
+  schedule:
+    # Runs daily at 7:00 AM UTC. Adjust if you want a different timezone:
+    # 7:00 AM EST  = 12:00 UTC  → change to: '0 12 * * *'
+    # 7:00 AM EET  = 4:00 UTC   → change to: '0 4 * * *'
+    - cron: '0 7 * * *'
+  workflow_dispatch:  # allows manual trigger from GitHub Actions tab
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run digest
+        env:
+          GMAIL_ADDRESS:       ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD:  ${{ secrets.GMAIL_APP_PASSWORD }}
+          DIGEST_TO:           ${{ secrets.DIGEST_TO }}
+          GEMINI_API_KEY:      ${{ secrets.GEMINI_API_KEY }}
+        run: python digestV2.py
