@@ -30,4 +30,4 @@ jobs:
           GMAIL_APP_PASSWORD:  ${{ secrets.GMAIL_APP_PASSWORD }}
           DIGEST_TO:           ${{ secrets.DIGEST_TO }}
           GEMINI_API_KEY:      ${{ secrets.GEMINI_API_KEY }}
-        run: python digestV2.py
+        run: python digest.py
