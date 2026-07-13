@@ -357,7 +357,7 @@ def build_html(entries, digest_date):
 # ---------------------------------------------------------------------------
 
 def send_email(html_body, subject, gmail_address, app_password, to_address):
-    msg = MIMEMultipart("alternative")
+    recipients = [addr.strip() for addr in to_address.split(",")]msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = gmail_address
     msg["To"]      =  ", ".join(recipients)
@@ -366,7 +366,7 @@ def send_email(html_body, subject, gmail_address, app_password, to_address):
     with smtplib.SMTP("smtp.gmail.com", 587) as server:
         server.starttls()
         server.login(gmail_address, app_password)
-        recipients = [addr.strip() for addr in to_address.split(",")]
+        
         server.sendmail(gmail_address, recipients, msg.as_string())
 
 
