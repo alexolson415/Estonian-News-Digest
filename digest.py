@@ -4,7 +4,7 @@ Estonia-US Defense News Digest
 --------------------------------
 Pulls RSS feeds from Estonian news sources, uses the Gemini API (free tier)
 to filter for Estonia-US defense and security relevance, summarizes each
-relevant article in English with a short detail paragraph, and emails the result.
+relevant article in both English and Estonian, and emails the result.
 
 Scope of "relevant":
   - Direct US-Estonia bilateral defense activity (exercises, troop rotations,
@@ -18,9 +18,9 @@ Scope of "relevant":
     relevant to the transatlantic alliance
 
 Run modes:
-    python digest.py --check-setup   validate credentials and feeds, no email sent
-    python digest.py --test          fetch feeds and print candidates, no API/email
-    python digest.py --dry-run       full pipeline, writes digest_preview.html instead of emailing
+    python digestV2.py --check-setup   validate credentials and feeds, no email sent
+    python digestV2.py --test          fetch feeds and print candidates, no API/email
+    python digestV2.py --dry-run       full pipeline, writes digest_preview.html instead of emailing
     python digest.py                 full pipeline, sends the email
 
 Setup:
@@ -37,9 +37,11 @@ import os
 import smtplib
 import sys
 import time
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from xmlrpc import server
 
 import feedparser
 
@@ -69,14 +71,16 @@ load_dotenv()
 # Configuration
 # ---------------------------------------------------------------------------
 
+# RSS feeds to pull from.
+# ERR News and Postimees are confirmed stable endpoints.
+# ICDS is Estonia's leading defense/security think tank -- verify icds.ee/feed/
+# resolves from your network before relying on it (their site was recently
+# redesigned and the feed path may have changed).
 FEEDS = {
     "ERR News (EN)":  "https://news.err.ee/rss",
     "Postimees (EN)": "https://news.postimees.ee/rss",
     "ICDS":           "https://icds.ee/en/feed/",
-    "Äripäev":        "https://www.aripaev.ee/rss",
-    "Õhtuleht":       "https://www.ohtuleht.ee/rss",
-    "Estonian World": "https://estonianworld.com/feed/",
-    "The Baltic Times": "https://www.baltictimes.com/rss/",}
+}
 
 # How far back to look for articles.
 LOOKBACK_HOURS = 24
@@ -104,7 +108,7 @@ PREFILTER_KEYWORDS = [
     "russia", "putin", "hybrid", "sabotage", "espionage", "cyberattack",
     "cable", "pipeline", "border", "intelligence", "security threat",
     # Regional / alliance
-    "baltic", "tapa", "ämari", "nato flank", "deterrence",
+    "baltic", "tapa", "ämari", "nato flank", "deterrence", "DIANA"
     # Wisconsin National Guard has a state partnership with Estonia
     "wisconsin",
 ]
@@ -182,15 +186,18 @@ def prefilter(entries):
 
 
 # ---------------------------------------------------------------------------
-# Step 3: LLM relevance filter + summary
+# Step 3: LLM relevance filter + bilingual summary
 # ---------------------------------------------------------------------------
 
 def build_prompt(batch):
-    """Construct the Gemini prompt for a batch of articles."""
+    """
+    Construct the Gemini prompt for a batch of articles.
+    Returns a string.
+    """
     articles_block = "\n\n".join(
         f"[{i}] SOURCE: {e['source']}\n"
         f"TITLE: {e['title']}\n"
-        f"TEXT: {e['summary'][:1000]}"
+        f"TEXT: {e['summary'][:600]}"
         for i, e in enumerate(batch)
     )
 
@@ -217,14 +224,13 @@ security angle, or defense items with zero US/NATO/transatlantic dimension.
 When genuinely uncertain, err toward INCLUDING the article and flag it as uncertain.
 
 For EACH article produce a JSON object with:
-  "relevant":   true or false
-  "en_summary": (only if relevant=true) one concise sentence in English summarizing the article
-  "en_detail":  (only if relevant=true) 2 paragraphs expanding on the summary — key actors,
+  "relevant": true or false
+  "en_summary": (only if relevant=true) one concise sentence in English, your own words
+  "en_detail":  (only if relevant=true)  2 paragraphs in English expanding on the summary — key actors,
                 what was decided or happened, and why it matters for US-Estonia defense relations
-  "tag":        (only if relevant=true) 3-6 word phrase naming the specific angle,
+   "tag":        (only if relevant=true) 3-6 word phrase naming the specific angle,
                 e.g. "US troop rotation Tapa", "Baltic cable sabotage", "NATO air policing",
                 "US-Estonia arms agreement", "Russian hybrid threat"
-
 Respond with ONLY a JSON array of {len(batch)} objects in order. No preamble, no markdown fences.
 
 Articles:
@@ -234,7 +240,7 @@ Articles:
 def gemini_filter_and_summarize(entries, api_key):
     """
     Send batches of pre-filtered entries to Gemini. Keep only those judged
-    relevant. Returns a list of entries enriched with en_summary, en_detail,
+    relevant. Returns a list of entries enriched with en_summary,
     and tag fields.
     """
     from google import genai
@@ -274,6 +280,7 @@ def gemini_filter_and_summarize(entries, api_key):
                 break
 
         if parsed_response is None:
+            # If the entire batch failed, skip rather than guess
             print(f"  Skipping {len(batch)} articles (batch failed entirely)", file=sys.stderr)
         else:
             for entry, result in zip(batch, parsed_response):
@@ -325,26 +332,21 @@ def build_html(entries, digest_date):
             pub_str = e["published"].strftime("%Y-%m-%d %H:%M UTC") + " &nbsp;&middot;&nbsp; "
 
         lines.append(f"""
-<div style="margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid #e8e8e8;">
+<div style="margin-bottom: 22px; padding-bottom: 16px; border-bottom: 1px solid #e8e8e8;">
   <a href="{e['link']}"
-     style="font-size: 16px; font-weight: bold; color: #154360; text-decoration: none;">
+     style="font-size: 15px; font-weight: bold; color: #154360; text-decoration: none;">
     {e['title']}
   </a>
-  <div style="font-size: 12px; color: #888; margin: 4px 0 10px;">
+  <div style="font-size: 12px; color: #888; margin: 3px 0 8px;">
     {pub_str}{e['source']}
     &nbsp;&middot;&nbsp;
     <span style="background: #eaf2f8; color: #1a5276;
                  padding: 2px 7px; border-radius: 3px; font-size: 11px;">
       {e.get('tag', '')}
     </span>
-  </div>
-  <div style="font-weight: 500; margin-bottom: 6px;">
-    {e.get('en_summary', '')}
-  </div>
-  <div style="color: #333; line-height: 1.6;">
-    {e.get('en_detail', '')}
-  </div>
-</div>""")
+  <div style="font-weight: 500; margin-bottom: 6px;">{e.get('en_summary', '')}</div>
+  <div style="color: #333; line-height: 1.6;">{e.get('en_detail', '')}</div>
+  </div>""")
 
     lines.append("</body></html>")
     return "\n".join(lines)
@@ -358,13 +360,14 @@ def send_email(html_body, subject, gmail_address, app_password, to_address):
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = gmail_address
-    msg["To"]      = to_address
+    msg["To"]      =  ", ".join(recipients)
     msg.attach(MIMEText(html_body, "html"))
 
     with smtplib.SMTP("smtp.gmail.com", 587) as server:
         server.starttls()
         server.login(gmail_address, app_password)
-        server.sendmail(gmail_address, [to_address], msg.as_string())
+        recipients = [addr.strip() for addr in to_address.split(",")]
+        server.sendmail(gmail_address, recipients, msg.as_string())
 
 
 # ---------------------------------------------------------------------------
