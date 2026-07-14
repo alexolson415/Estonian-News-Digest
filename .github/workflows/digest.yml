@@ -26,8 +26,7 @@ jobs:
 
       - name: Run digest
         env:
-          GMAIL_ADDRESS:       ${{ secrets.GMAIL_ADDRESS }}
-          GMAIL_APP_PASSWORD:  ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_TOKEN_JSON:  ${{ secrets.GMAIL_TOKEN_JSON }}
           DIGEST_TO:           ${{ secrets.DIGEST_TO }}
           GEMINI_API_KEY:      ${{ secrets.GEMINI_API_KEY }}
         run: python digest.py
