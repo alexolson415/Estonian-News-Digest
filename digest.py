@@ -34,7 +34,6 @@ Cron (daily at 07:00 local time):
 import argparse
 import json
 import os
-import smtplib
 import sys
 import time
 from collections import defaultdict
@@ -42,6 +41,10 @@ from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from xmlrpc import server
+import base64
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request as GoogleAuthRequest
+from googleapiclient.discovery import build
 
 import feedparser
 
@@ -353,23 +356,47 @@ def build_html(entries, digest_date):
 
 
 # ---------------------------------------------------------------------------
-# Step 5: Send email via Gmail SMTP
+# Step 5: Send email via Gmail API
 # ---------------------------------------------------------------------------
 
-def send_email(html_body, subject, gmail_address, app_password, to_address):
+def send_email(html_body, subject, to_address):
+    """
+    Send the digest via the Gmail API using OAuth credentials.
+
+    Reads the OAuth token from either:
+      - GMAIL_TOKEN_JSON environment variable (GitHub Actions), or
+      - token.json file in the working directory (local runs)
+
+    The token was generated once by generate_token.py and refreshes itself
+    automatically when expired.
+    """
     recipients = [addr.strip() for addr in to_address.split(",")]
+
+    # Load token: env var first (CI), then local file
+    token_json = os.environ.get("GMAIL_TOKEN_JSON")
+    if token_json:
+        creds = Credentials.from_authorized_user_info(json.loads(token_json))
+    elif os.path.exists("token.json"):
+        creds = Credentials.from_authorized_user_file("token.json")
+    else:
+        raise RuntimeError(
+            "No Gmail token found. Set GMAIL_TOKEN_JSON env var or run "
+            "generate_token.py to create token.json"
+        )
+
+    # Refresh if expired (tokens expire after ~1 hour; refresh is automatic)
+    if creds.expired and creds.refresh_token:
+        creds.refresh(GoogleAuthRequest())
+
+    service = build("gmail", "v1", credentials=creds)
+
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"]    = gmail_address
-    msg["To"]      =  ", ".join(recipients)
+    msg["To"]      = ", ".join(recipients)
     msg.attach(MIMEText(html_body, "html"))
 
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
-        server.starttls()
-        server.login(gmail_address, app_password)
-        
-        server.sendmail(gmail_address, recipients, msg.as_string())
-
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+    service.users().messages().send(userId="me", body={"raw": raw}).execute()
 
 # ---------------------------------------------------------------------------
 # Setup check
@@ -395,22 +422,6 @@ def check_setup():
 
     if not all_present:
         print("\nFill in missing values in .env before continuing.")
-        return
-
-    print("\n=== 2. Gmail SMTP login ===")
-    try:
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.starttls()
-            server.login(os.environ["GMAIL_ADDRESS"], os.environ["GMAIL_APP_PASSWORD"])
-        print("  [OK] Login succeeded")
-    except smtplib.SMTPAuthenticationError:
-        print("  [FAILED] Authentication error. Verify that:")
-        print("    - 2-Step Verification is ON for the Google account")
-        print("    - GMAIL_APP_PASSWORD is an app password, not your login password")
-        print("    - GMAIL_ADDRESS matches the account the app password belongs to")
-        return
-    except Exception as exc:
-        print(f"  [FAILED] {exc}")
         return
 
     print("\n=== 3. Gemini API key ===")
@@ -508,15 +519,13 @@ def main():
     to_address    = os.environ.get("DIGEST_TO")
 
     missing = [k for k, v in [
-        ("GMAIL_ADDRESS", gmail_address),
-        ("GMAIL_APP_PASSWORD", app_password),
         ("DIGEST_TO", to_address),
     ] if not v]
     if missing:
         sys.exit(f"ERROR: missing environment variable(s): {', '.join(missing)}")
 
     subject = f"Estonia-US Defense Digest — {digest_date}"
-    send_email(html, subject, gmail_address, app_password, to_address)
+    send_email(html, subject, to_address)
     print(f"Sent: {subject}")
 
 

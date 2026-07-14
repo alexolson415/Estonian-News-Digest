@@ -6,3 +6,6 @@ __pycache__/
 venv/
 
 eestiV/
+
+credentials.json
+token.json
