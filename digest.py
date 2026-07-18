@@ -114,6 +114,14 @@ PREFILTER_KEYWORDS = [
     "baltic", "tapa", "ämari", "nato flank", "deterrence", "DIANA"
     # Wisconsin National Guard has a state partnership with Estonia
     "wisconsin",
+    # Defense industry & technology
+    "defense industry", "defence industry", "arms industry", "procurement",
+    "startup", "dual-use", "milrem", "baltic workboats", "threod",
+    "defsecintel", "frankenburg", "cybernetica", "aerospace",
+    "satellite", "space", "ai", "artificial intelligence", "autonomous",
+    "robotics", "sensor", "electronic warfare", "counter-drone",
+    "nato diana", "eda", "european defence fund",
+
 ]
 
 
@@ -220,9 +228,15 @@ TASK: For each article, decide whether it is relevant to ESTONIA-US DEFENSE AND 
     espionage cases with a US or NATO angle, disinformation campaigns targeting NATO credibility
   - Estonian defense industry or technology with a US or transatlantic dimension: deals with US
     companies, NATO-funded programs, dual-use technology relevant to allied defense
+  - Estonian defense industry and technology sector: Estonian defense-tech companies
+    (e.g. Milrem Robotics, Threod, DefSecIntel, Frankenburg, Cybernetica), defense startups,
+    procurement decisions, dual-use technology (drones, autonomy, AI, sensors, space,
+    cyber), NATO DIANA or European Defence Fund activity involving Estonia, and any
+    defense-industrial development with a US, NATO, or transatlantic dimension
+
 
 NOT relevant: purely domestic Estonian politics, cultural news, sports, economic stories with no
-security angle, or defense items with zero US/NATO/transatlantic dimension.
+security or defense-industry angle, or defense items with zero US/NATO/transatlantic dimension.
 
 When genuinely uncertain, err toward INCLUDING the article and flag it as uncertain.
 
