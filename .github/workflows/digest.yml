@@ -24,6 +24,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Check token length
+        env:
+          TOK: ${{ secrets.GMAIL_TOKEN_JSON }}
+        run: echo "token length is ${#TOK}"
+        
       - name: Run digest
         env:
           GMAIL_TOKEN_JSON:  ${{ secrets.GMAIL_TOKEN_JSON }}
