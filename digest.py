@@ -40,8 +40,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from xmlrpc import server
 import base64
+import urllib.request
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from googleapiclient.discovery import build
@@ -88,6 +88,11 @@ FEEDS = {
 # How far back to look for articles.
 LOOKBACK_HOURS = 24
 
+# Identify ourselves to feed servers. Some servers serve a block/challenge
+# page to default Python user agents; that page isn't valid XML, so feedparser
+# fails with "not well-formed (invalid token)". A real UA avoids most of these.
+USER_AGENT = "EstoniaDefenseDigest/1.0 (+https://github.com/)"
+
 # Gemini model to use. gemini-2.5-flash is on the free tier as of mid-2026.
 # Check https://ai.google.dev/gemini-api/docs/pricing if this stops working.
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -133,13 +138,23 @@ def fetch_recent_entries():
     for source, url in FEEDS.items():
         print(f"Fetching {source} ...", file=sys.stderr)
         try:
-            feed = feedparser.parse(url)
+            feed = feedparser.parse(url, agent=USER_AGENT)
         except Exception as exc:
             print(f"  ERROR: {exc}", file=sys.stderr)
             continue
 
         if feed.bozo and not feed.entries:
             print(f"  WARNING: could not parse feed ({feed.bozo_exception})", file=sys.stderr)
+            # Re-fetch the opening chunk so the logs show what actually came back
+            # (an HTML block page? gzip bytes? a stray character?) instead of us
+            # having to guess from the parse error alone. Wrapped in its own
+            # try/except so a failed diagnostic fetch never crashes the run.
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+                raw_bytes = urllib.request.urlopen(req, timeout=15).read()[:300]
+                print(f"  First 300 bytes: {raw_bytes!r}", file=sys.stderr)
+            except Exception as diag_exc:
+                print(f"  (could not fetch raw bytes for diagnosis: {diag_exc})", file=sys.stderr)
             continue
 
         count = 0
@@ -404,17 +419,18 @@ def send_email(html_body, subject, to_address):
 
 def check_setup():
     """
-    Validate all four environment variables, test Gmail SMTP login, test the
-    Gemini API key with a minimal call, and test RSS feed connectivity.
-    Does not send any email or process any articles.
+    Validate the environment variables the pipeline needs, confirm a usable
+    Gmail OAuth token is available, test the Gemini API key with a minimal
+    call, and test RSS feed connectivity. Sends no email and processes no
+    articles.
     """
     print("=== 1. Environment variables ===")
-    required = ["GMAIL_ADDRESS", "GMAIL_APP_PASSWORD", "DIGEST_TO", "GEMINI_API_KEY"]
+    required = ["DIGEST_TO", "GEMINI_API_KEY"]
     all_present = True
     for var in required:
         val = os.environ.get(var)
         if val:
-            display = val if var in ("GMAIL_ADDRESS", "DIGEST_TO") else val[:4] + "..." + val[-2:]
+            display = val if var == "DIGEST_TO" else val[:4] + "..." + val[-2:]
             print(f"  [OK]      {var} = {display}")
         else:
             print(f"  [MISSING] {var}")
@@ -423,6 +439,33 @@ def check_setup():
     if not all_present:
         print("\nFill in missing values in .env before continuing.")
         return
+
+    print("\n=== 2. Gmail token ===")
+    # The send path reads a token from GMAIL_TOKEN_JSON (CI) or token.json
+    # (local). Confirm one is present, parses as JSON, and carries a
+    # refresh_token -- without it the token works now but dies in ~7 days.
+    token_json = os.environ.get("GMAIL_TOKEN_JSON")
+    try:
+        if token_json:
+            info = json.loads(token_json)
+            token_source = "GMAIL_TOKEN_JSON env var"
+        elif os.path.exists("token.json"):
+            with open("token.json") as f:
+                info = json.load(f)
+            token_source = "token.json file"
+        else:
+            print("  [MISSING] no GMAIL_TOKEN_JSON env var and no token.json file")
+            print("            Run generate_token.py to create token.json.")
+            return
+    except (json.JSONDecodeError, ValueError) as exc:
+        print(f"  [FAILED]  token is not valid JSON: {exc}")
+        return
+
+    if "refresh_token" in info:
+        print(f"  [OK]      token loaded from {token_source} (refresh_token present)")
+    else:
+        print(f"  [WARNING] token loaded from {token_source} but has NO refresh_token")
+        print("            It will work now but expire in ~7 days with no auto-refresh.")
 
     print("\n=== 3. Gemini API key ===")
     try:
@@ -436,7 +479,7 @@ def check_setup():
 
     print("\n=== 4. RSS feed connectivity ===")
     for source, url in FEEDS.items():
-        feed = feedparser.parse(url)
+        feed = feedparser.parse(url, agent=USER_AGENT)
         if feed.entries:
             print(f"  [OK]      {source}: {len(feed.entries)} entries")
         else:
@@ -502,7 +545,9 @@ def main():
         return
 
     relevant = gemini_filter_and_summarize(candidates, api_key)
-
+    if not relevant:
+        print("No relevant articles after LLM filter. Skipping email.", file=sys.stderr)
+        return
     digest_date = datetime.now().strftime("%Y-%m-%d")
     html = build_html(relevant, digest_date)
 
@@ -514,9 +559,7 @@ def main():
         return
 
     # --- live send ---
-    gmail_address = os.environ.get("GMAIL_ADDRESS")
-    app_password  = os.environ.get("GMAIL_APP_PASSWORD")
-    to_address    = os.environ.get("DIGEST_TO")
+    to_address = os.environ.get("DIGEST_TO")
 
     missing = [k for k, v in [
         ("DIGEST_TO", to_address),
