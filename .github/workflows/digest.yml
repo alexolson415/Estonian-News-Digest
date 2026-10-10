@@ -7,8 +7,8 @@ on:
     # 7:00 AM EET  = 4:00 UTC   → change to: '0 4 * * *'
     - cron: '0 7 * * *'
   workflow_dispatch:  # allows manual trigger from GitHub Actions tab
-  
-  permissions:         
+
+permissions:         
     contents: read
     actions: write
 
