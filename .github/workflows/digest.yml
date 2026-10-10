@@ -34,14 +34,14 @@ jobs:
           TOK: ${{ secrets.GMAIL_TOKEN_JSON }}
         run: echo "token length is ${#TOK}"
       
-      - name: Keep workflow alive
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow enable "${{ github.workflow }}" --repo "${{ github.repository }}"
-      
       - name: Run digest
         env:
           GMAIL_TOKEN_JSON:  ${{ secrets.GMAIL_TOKEN_JSON }}
           DIGEST_TO:           ${{ secrets.DIGEST_TO }}
           GEMINI_API_KEY:      ${{ secrets.GEMINI_API_KEY }}
         run: python digest.py
+
+      - name: Keep workflow alive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow enable digest.yml --repo "${{ github.repository }}"
